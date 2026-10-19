@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<!-- index.html -->
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#090612">
+<title>Morse Hand AI</title>
+<style>
+:root{color-scheme:dark;--bg:#090612;--panel:#151020;--line:#61368a;--purple:#c084fc;--muted:#b7a7c9}
+*{box-sizing:border-box}
+body{margin:0;background:#08090c;color:#f5f5f7;font-family:Inter,system-ui,-apple-system,Arial,sans-serif}
+header{padding:10px 12px 7px;text-align:left;background:#0b0c10;border-bottom:1px solid #24262d}
+h1{margin:0;color:#f4f4f5;font-size:20px;letter-spacing:1.2px;text-shadow:0 0 12px #a855f755}
+header p{margin:4px 0 0;color:#a1a1aa;font-size:11px}
+main{max-width:1000px;margin:auto;padding:8px 9px 22px;display:grid;gap:8px}
+.camera{position:relative;width:100%;height:min(62vh,640px);min-height:330px;aspect-ratio:auto;overflow:hidden;border:1px solid #30323a;border-radius:12px;background:#020203;box-shadow:0 8px 28px #0009;touch-action:manipulation}
+video,.skeleton{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+video{transform:scaleX(-1);will-change:transform}
+.skeleton{will-change:contents}
+.skeleton{pointer-events:none}
+.camera-top{position:absolute;z-index:2;left:10px;right:10px;top:10px;display:flex;justify-content:space-between;gap:8px;pointer-events:none}
+.pill{background:#0b0714d9;border:1px solid #7543a0;border-radius:999px;padding:6px 9px;font-size:11px;color:#e9d5ff;backdrop-filter:blur(6px)}
+.center-hint{position:absolute;left:10px;right:10px;bottom:10px;text-align:center;padding:8px;background:#090612c9;border:1px solid #61368a;border-radius:12px;color:#e9d5ff;font-size:12px;pointer-events:none}
+.panel{background:rgba(24,25,30,.88);border:1px solid #30323a;border-radius:12px;padding:11px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+button{border:1px solid #555862;border-radius:9px;padding:10px 11px;color:#fff;background:linear-gradient(135deg,#383a43,#202127);font-weight:700;font-size:12px;flex:1;min-width:105px}
+button.secondary{background:#17181d;border-color:#42444d}
+button:disabled{opacity:.45}
+.section-title{font-size:11px;letter-spacing:1.4px;color:#c4b5fd;margin-bottom:8px;font-weight:800}
+#status{font-size:13px;color:#e9d5ff;line-height:1.5}
+#current{min-height:34px;font-size:25px;letter-spacing:5px;color:#d8b4fe;text-shadow:0 0 12px #a855f7;overflow-wrap:anywhere}
+#message{min-height:44px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:20px;line-height:1.4;color:#fff;text-shadow:0 0 12px #9333ea}
+.small{font-size:12px;color:var(--muted);line-height:1.5}
+.chart{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}
+.key{border:1px solid #39244e;background:#100b19;border-radius:8px;text-align:center;padding:6px 2px}
+.key b{display:block;font-size:12px;color:#e9d5ff}.key span{font-size:10px;color:#c084fc}
+footer{font-size:11px;color:#a99ab9;text-align:center;padding:0 8px}
+@media(min-width:760px){main{grid-template-columns:minmax(0,1.1fr) minmax(300px,.9fr);align-items:start}.camera{grid-row:span 3;max-height:75vh}.controls{align-self:start}.chart{grid-template-columns:repeat(5,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<header>
+  <h1>MORSE HAND AI</h1>
+  <p>Hand tracking · Morse decoder · Neon interface</p>
+</header>
+<main>
+  <section class="camera" id="cameraSurface" aria-label="Camera hand tracking">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="skeleton" class="skeleton"></canvas>
+    <div class="camera-top">
+      <span class="pill" id="tracking">● Chưa bật camera</span>
+      <span class="pill" id="fps">AI —</span>
+    </div>
+    <div class="center-hint" id="gestureHint">Bật camera, đưa một bàn tay vào khung hình</div>
+  </section>
+  <section class="panel">
+    <div class="section-title">CỬ CHỈ ĐIỀU KHIỂN</div>
+    <div class="chart" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="key"><b>Chấm ·</b><span>Ngón cái chạm ngón trỏ 1 lần rồi nhấc ra</span></div>
+      <div class="key"><b>Gạch —</b><span>Ngón cái chạm ngón giữa 1 lần rồi nhấc ra</span></div>
+      <div class="key"><b>Dấu cách</b><span>Xòe đủ 5 ngón rồi nắm tay</span></div>
+    </div>
+  </section>
+
+  <section class="panel controls">
+    <div class="section-title">MORSE HAND · CONTROLS</div>
+    <div class="row">
+      <button id="start">Bật camera AI</button>
+      <button id="switch" class="secondary" disabled>Đổi camera</button>
+      <button id="stop" class="secondary" disabled>Tắt camera</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="finish" class="secondary">Chốt / kết thúc</button>
+      <button id="undo" class="secondary">Xóa ký tự</button>
+      <button id="clear" class="secondary">Xóa tất cả</button>
+    </div>
+    <p class="small">Chạm vào vùng camera cũng chốt nội dung. Dùng nút riêng nếu muốn tránh chạm nhầm.</p>
+    <div id="status" role="status">Nhấn “Bật camera AI”. Lần đầu cần Internet để tải MediaPipe và mô hình.</div>
+  </section>
+
+  <section class="panel">
+    <div class="section-title">MÃ MORSE ĐANG NHẬP · CHƯA CHỐT CHỮ</div>
+    <div id="current">—</div>
+    <div class="small" id="currentMeaning">Ngón cái chạm ngón trỏ 1 lần = chấm · ngón cái chạm ngón giữa 1 lần = gạch</div>
+  </section>
+
+  <section class="panel">
+    <div class="section-title">MESSAGE</div>
+    <div id="message" aria-live="polite"></div>
+    <div class="row">
+      <button id="copy" class="secondary">Sao chép văn bản</button>
+      <button id="sound" class="secondary">Âm báo: tắt</button>
+    </div>
+    <p class="small">Xòe 5 ngón rồi nắm tay để chèn dấu cách. Chờ nghỉ để tự chốt chữ; chạm camera/nút Chốt để kết thúc và giữ kết quả.</p>
+  </section>
+
+  <section class="panel">
+    <div class="section-title">MORSE CHART</div>
+    <div class="chart" id="chart"></div>
+  </section>
+</main>
+<footer>Camera xử lý trực tiếp trong trình duyệt. Không gửi hình ảnh lên máy chủ bởi mã này.</footer>
+
+<script type="module">
+const video = document.querySelector('#video');
+const canvas = document.querySelector('#skeleton');
+const ctx = canvas.getContext('2d');
+const statusEl = document.querySelector('#status');
+const trackingEl = document.querySelector('#tracking');
+const fpsEl = document.querySelector('#fps');
+const hintEl = document.querySelector('#gestureHint');
+const currentEl = document.querySelector('#current');
+const currentMeaning = document.querySelector('#currentMeaning');
+const messageEl = document.querySelector('#message');
+const cameraSurface = document.querySelector('#cameraSurface');
+const $ = id => document.getElementById(id);
+
+const MORSE = {
+ A:'.-', B:'-...', C:'-.-.', D:'-..', E:'.', F:'..-.', G:'--.',
+ H:'....', I:'..', J:'.---', K:'-.-', L:'.-..', M:'--', N:'-.',
+ O:'---', P:'.--.', Q:'--.-', R:'.-.', S:'...', T:'-', U:'..-',
+ V:'...-', W:'.--', X:'-..-', Y:'-.--', Z:'--..',
+ '0':'-----','1':'.----','2':'..---','3':'...--','4':'....-',
+ '5':'.....','6':'-....','7':'--...','8':'---..','9':'----.',
+ '.':'.-.-.-', ',':'--..--', '?':'..--..', "'":'.----.',
+ '!':'-.-.--','/':'-..-.','(':'-.--.',')':'-.--.-',
+ '&':'.-...',':':'---...',';':'-.-.-.','=':'-...-',
+ '+':'.-.-.','-':'-....-','_':'..--.-','"':'.-..-.',
+ '$':'...-..-','@':'.--.-.'
+};
+const REVERSE = Object.fromEntries(Object.entries(MORSE).map(([k,v])=>[v,k]));
+let stream=null, landmarker=null, running=false, busy=false, facing='environment', raf=0;
+let lastVideoTime=-1, lastFrameAt=0, frameCount=0, fpsAt=0;
+let previousTouch={index:false,middle:false}, touchSince={index:0,middle:0}, lastEmit={index:0,middle:0};
+let openSince=0, fistSince=0, openArmed=false, lastSpaceAt=0;
+let currentCode='', message='', lastSignalAt=0, soundOn=false, audioCtx=null;
+let unitMs=260, shortSamples=[], longSamples=[], calibrations=0;
+let lastStatus='';
+
+function setStatus(s){if(s!==lastStatus){statusEl.textContent=s;lastStatus=s;}}
+function updateText(){
+ currentEl.textContent=currentCode || '—';
+ const letter=REVERSE[currentCode];
+ currentMeaning.textContent=currentCode ? (letter ? `Dự đoán: ${letter}` : 'Đang nhập mã Morse…') : 'Ngón cái chạm ngón trỏ = chấm · ngón cái chạm ngón giữa = gạch · xòe rồi nắm = cách';
+ messageEl.textContent=message;
+}
+function beep(duration=60,freq=700){
+ if(!soundOn)return;
+ try{
+  audioCtx ||= new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended')audioCtx.resume();
+  const osc=audioCtx.createOscillator(), gain=audioCtx.createGain();
+  osc.frequency.value=freq;gain.gain.value=.045;
+  osc.connect(gain);gain.connect(audioCtx.destination);osc.start();
+  osc.stop(audioCtx.currentTime+duration/1000);
+ }catch{}
+}
+function commitLetter(){
+ if(!currentCode)return;
+ const letter=REVERSE[currentCode];
+ if(letter) message+=letter;
+ else message+='�';
+ currentCode='';
+ updateText();
+}
+function commitWord(){
+ commitLetter();
+ if(message && !message.endsWith(' ')) message+=' ';
+ updateText();
+}
+function finish(){
+ commitLetter();
+ message=message.trimEnd();
+ updateText();
+ setStatus('Đã chốt nội dung. Camera vẫn chạy; chạm “Bật camera AI” không cần thiết để tiếp tục.');
+}
+function emitSignal(kind,duration){
+ const now=performance.now();
+ // The selected finger defines the Morse symbol, matching the hand legend:
+ // index finger touching thumb = dot; middle finger touching thumb = dash.
+ // Duration adapts the pause/character timing, not the symbol identity.
+ const symbol=kind==='middle'?'-':'.';
+ const bounded=Math.max(70,Math.min(duration,1400));
+ if(symbol==='.') shortSamples.push(bounded); else longSamples.push(bounded);
+ if(shortSamples.length>12)shortSamples.shift();
+ if(longSamples.length>12)longSamples.shift();
+
+ // Learn a user's general tapping pace gradually without changing dot/dash.
+ const all=[...shortSamples,...longSamples];
+ if(all.length>=4){
+  const avg=all.reduce((a,b)=>a+b,0)/all.length;
+  unitMs=Math.max(160,Math.min(520,unitMs*.85+avg*.15));
+ }
+ currentCode+=symbol;
+ lastSignalAt=now;
+ updateText();
+ hintEl.textContent=`Đã nhận ${symbol==='.'?'CHẤM ·':'GẠCH —'} · ${Math.round(duration)} ms`;
+ beep(symbol==='-'?110:55,symbol==='-'?520:760);
+}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function isTouch(lm,tip,threshold=.52){
+ // Landmark distances are normalized by palm width, making the threshold
+ // more scale-independent across different distances from the camera.
+ const palm= Math.max(dist(lm[5],lm[17]),0.035);
+ return dist(lm[4],lm[tip])/palm < threshold;
+}
+function isOpenFive(lm){
+ const extended=(tip,pip,mcp)=>lm[tip].y<lm[pip].y && lm[pip].y<lm[mcp].y;
+ const thumb=dist(lm[4],lm[5]) > Math.max(dist(lm[5],lm[17])*.45,.055);
+ return thumb&&extended(8,6,5)&&extended(12,10,9)&&extended(16,14,13)&&extended(20,18,17);
+}
+function isFist(lm){
+ const pairs=[[8,6],[12,10],[16,14],[20,18]];
+ const folded=pairs.every(([tip,pip])=>lm[tip].y>lm[pip].y);
+ const center={x:(lm[0].x+lm[5].x+lm[9].x+lm[13].x+lm[17].x)/5,
+               y:(lm[0].y+lm[5].y+lm[9].y+lm[13].y+lm[17].y)/5};
+ const avg=pairs.reduce((sum,[tip])=>sum+dist(lm[tip],center),0)/4;
+ return folded&&avg<.28;
+}
+const CONNECTIONS=[
+ [0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],
+ [5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],
+ [13,17],[17,18],[18,19],[19,20],[0,17]
+];
+function drawHand(lm){
+ const w=canvas.width,h=canvas.height;
+ ctx.clearRect(0,0,w,h);
+ // Video is mirrored with CSS, so the skeleton uses the same mirrored x coordinate.
+ ctx.lineWidth=Math.max(1.5,w/360);
+ ctx.strokeStyle='#d8b4fe';ctx.shadowColor='#a855f7';ctx.shadowBlur=2;
+ for(const [a,b] of CONNECTIONS){
+  ctx.beginPath();ctx.moveTo((1-lm[a].x)*w,lm[a].y*h);ctx.lineTo((1-lm[b].x)*w,lm[b].y*h);ctx.stroke();
+ }
+ ctx.shadowBlur=3;
+ const colors=['#d8b4fe','#67e8f9','#a78bfa','#fbbf24','#fb7185'];
+ for(let i=0;i<lm.length;i++){
+  ctx.fillStyle=(i===4)?'#ffffff':(i===8)?colors[1]:(i===12)?colors[2]:(i===16)?colors[3]:(i===20)?colors[4]:'#e9d5ff';
+  ctx.beginPath();ctx.arc((1-lm[i].x)*w,lm[i].y*h,Math.max(2.5,w/180),0,Math.PI*2);ctx.fill();
+ }
+ ctx.shadowBlur=0;
+}
+function resetGestureState(){
+ previousTouch={index:false,middle:false};touchSince={index:0,middle:0};
+ openSince=0;fistSince=0;openArmed=false;
+}
+function processHand(lm,now){
+ drawHand(lm);
+ const open=isOpenFive(lm), fist=isFist(lm);
+ // Special space gesture must be completed as open-five then fist.
+ if(open){
+  if(!openSince)openSince=now;
+  fistSince=0;
+  if(now-openSince>220){openArmed=true;hintEl.textContent='✋ Đã nhận tay mở — nắm tay để chèn dấu cách';}
+ }else if(fist && openArmed){
+  if(!fistSince)fistSince=now;
+  if(now-fistSince>220 && now-lastSpaceAt>900){
+   commitWord();lastSpaceAt=now;openArmed=false;openSince=0;fistSince=0;
+   hintEl.textContent='Đã chèn dấu cách';
+   beep(130,420);
+  }
+ }else{
+  if(!open)openSince=0;
+  if(!fist)fistSince=0;
+  // If an open gesture was interrupted without a fist, disarm it.
+  if(!open && !fist)openArmed=false;
+ }
+ // Finger touches: only trigger on a fresh touch transition, not every frame.
+ const index=isTouch(lm,8,.34);
+ const middle=isTouch(lm,12,.34);
+ for(const [name,touched] of [['index',index],['middle',middle]]){
+  if(touched && !previousTouch[name]){
+   touchSince[name]=now;
+  }else if(!touched && previousTouch[name]){
+   const duration=now-(touchSince[name]||now);
+   if(duration>70 && now-lastEmit[name]>170 && !openArmed){
+    // Match the hand controls shown in the UI: index-thumb = dot,
+    // middle-thumb = dash. Duration is still measured for adaptive timing
+    // and debouncing, but it must not turn a middle-finger dash into a dot.
+    emitSignal(name,duration);
+    lastEmit[name]=now;
+   }
+  }
+  previousTouch[name]=touched;
+ }
+ // Auto-close a character after a pause. User can also tap to finish.
+ if(currentCode && lastSignalAt && now-lastSignalAt>Math.max(1800,unitMs*5)){
+  commitLetter();lastSignalAt=0;setStatus('Đã chốt ký tự sau 1,8 giây không có tín hiệu mới.');
+ }
+ const handName='Bàn tay đang được theo dõi';
+ trackingEl.textContent='● '+handName;
+}
+async function loadAI(){
+ if(landmarker)return;
+ setStatus('Đang tải MediaPipe AI và mô hình bàn tay…');
+ const vision=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/+esm');
+ const files=await vision.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+ try{
+  landmarker=await vision.HandLandmarker.createFromOptions(files,{
+   baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},
+   runningMode:'VIDEO',numHands:1,minHandDetectionConfidence:.55,minHandPresenceConfidence:.5,minTrackingConfidence:.5
+  });
+ }catch(gpuError){
+  landmarker=await vision.HandLandmarker.createFromOptions(files,{
+   baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'CPU'},
+   runningMode:'VIDEO',numHands:1,minHandDetectionConfidence:.55,minHandPresenceConfidence:.5,minTrackingConfidence:.5
+  });
+ }
+}
+async function startCamera(){
+ if(busy)return;
+ busy=true;
+ $('start').disabled=true;
+ $('switch').disabled=true;
+ $('stop').disabled=true;
+ try{
+  // Dừng hẳn track cũ trước khi xin camera mới, tránh Android giữ camera cũ.
+  running=false;
+  cancelAnimationFrame(raf);
+  if(stream){
+   const oldStream=stream;
+   stream=null;
+   oldStream.getTracks().forEach(track=>track.stop());
+  }
+  video.srcObject=null;
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  if(!navigator.mediaDevices?.getUserMedia)
+   throw new Error('Camera cần HTTPS/localhost và trình duyệt hỗ trợ.');
+
+  // Android đôi khi chưa nhả camera ngay sau stop(); thử lại một lần nếu bận.
+  const requestCamera = async (strict) => navigator.mediaDevices.getUserMedia({
+   audio:false,
+   video:{
+    ...(strict ? {facingMode:{exact:facing}} : {facingMode:{ideal:facing}}),
+    width:{ideal:480},height:{ideal:360},frameRate:{ideal:30,max:30}
+   }
+  });
+
+  try{
+   stream=await requestCamera(true);
+  }catch(firstError){
+   // Một số máy/trình duyệt không hỗ trợ exact facingMode.
+   await new Promise(resolve=>setTimeout(resolve,300));
+   stream=await requestCamera(false);
+  }
+
+  video.srcObject=stream;
+  await video.play();
+  await loadAI();
+
+  running=true;
+  resetGestureState();
+  lastVideoTime=-1;
+  frameCount=0;
+  fpsAt=performance.now();
+  $('switch').disabled=false;
+  $('stop').disabled=false;
+  $('start').disabled=true;
+  const track=stream.getVideoTracks()[0];
+  const actualFacing=track?.getSettings?.().facingMode;
+  setStatus('AI sẵn sàng'+(actualFacing?` · camera ${actualFacing==='user'?'trước':'sau'}`:'')+'. Ngón cái chạm ngón trỏ = chấm; ngón cái chạm ngón giữa = gạch. Chữ O là ngón cái chạm ngón giữa 3 lần, nhấc ra giữa mỗi lần.');
+  raf=requestAnimationFrame(loop);
+ }catch(e){
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+  video.srcObject=null;
+  running=false;
+  $('start').disabled=false;
+  $('switch').disabled=true;
+  $('stop').disabled=true;
+  setStatus('Không mở được camera: '+(e?.message||e)+'. Hãy kiểm tra quyền camera hoặc thử lại.');
+ }finally{
+  busy=false;
+ }
+}
+function stopCamera(update=true){
+ running=false;cancelAnimationFrame(raf);
+ if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}
+ video.srcObject=null;ctx.clearRect(0,0,canvas.width,canvas.height);
+ $('start').disabled=false;$('switch').disabled=true;$('stop').disabled=true;
+ trackingEl.textContent='● Chưa bật camera';fpsEl.textContent='AI —';
+ if(update)setStatus('Camera đã tắt.');
+}
+function loop(){
+ if(!running)return;
+ if(document.hidden){raf=requestAnimationFrame(loop);return;}
+ if(video.readyState>=2 && video.currentTime!==lastVideoTime){
+  lastVideoTime=video.currentTime;
+  const w=video.videoWidth,h=video.videoHeight;
+  if(w&&h){
+   if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
+   try{
+    const result=landmarker.detectForVideo(video,performance.now());
+    const lm=result.landmarks?.[0];
+    const now=performance.now();
+    if(lm){processHand(lm,now);}
+    else{
+     ctx.clearRect(0,0,canvas.width,canvas.height);
+     trackingEl.textContent='● Chưa thấy bàn tay';
+     hintEl.textContent='Đưa một bàn tay vào khung hình';
+     resetGestureState();
+    }
+    frameCount++;
+    if(now-fpsAt>1000){fpsEl.textContent=`AI · ${frameCount} FPS`;frameCount=0;fpsAt=now;}
+   }catch(e){setStatus('Lỗi nhận diện: '+e.message);}
+  }
+ }
+ raf=requestAnimationFrame(loop);
+}
+function renderChart(){
+ const chart=$('chart');
+ for(const [char,code] of Object.entries(MORSE)){
+  if(char.length!==1)continue;
+  const cell=document.createElement('div');cell.className='key';
+  const b=document.createElement('b');b.textContent=char;
+  const s=document.createElement('span');s.textContent=code;
+  cell.append(b,s);chart.append(cell);
+ }
+}
+$('start').addEventListener('click',startCamera);
+$('stop').addEventListener('click',()=>stopCamera());
+$('switch').addEventListener('click',async()=>{
+ if(busy)return;
+ facing=facing==='environment'?'user':'environment';
+ setStatus('Đang chuyển sang camera '+(facing==='user'?'trước':'sau')+'…');
+ await startCamera();
+});
+$('finish').addEventListener('click',finish);
+$('undo').addEventListener('click',()=>{if(currentCode)currentCode=currentCode.slice(0,-1);else message=message.slice(0,-1);updateText();});
+$('clear').addEventListener('click',()=>{currentCode='';message='';lastSignalAt=0;updateText();setStatus('Đã xóa nội dung.');});
+$('copy').addEventListener('click',async()=>{
+ try{await navigator.clipboard.writeText(message);setStatus('Đã sao chép văn bản.');}
+ catch{setStatus('Không thể sao chép tự động. Hãy chọn và sao chép văn bản thủ công.');}
+});
+$('sound').addEventListener('click',()=>{soundOn=!soundOn;$('sound').textContent='Âm báo: '+(soundOn?'bật':'tắt');if(soundOn)beep();});
+cameraSurface.addEventListener('click',e=>{
+ if(e.target.closest('button'))return;
+ finish();
+});
+window.addEventListener('pagehide',()=>stopCamera(false));
+renderChart();updateText();
+</script>
+</body>
+</html>
